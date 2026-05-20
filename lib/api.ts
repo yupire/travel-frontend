@@ -1,6 +1,6 @@
 import type { City, TripRequest, TripResponse } from "@/types/trip";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const BASE_URL = process.env.BACKEND_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export async function getCities(): Promise<City[]> {
   const res = await fetch(`${BASE_URL}/cities`, { cache: "force-cache" });
