@@ -3,6 +3,14 @@ export interface City {
   name: string;
   name_en: string;
   country: string;
+  // Optional fields from QWeather /geo/v2/city/lookup — populated when
+  // the cities endpoint is backed by the real API. The trip form only
+  // reads `id`, `name`, `country`; the rest are exposed for future use
+  // (e.g. map preview, geolocation suggestions).
+  lat?: number;
+  lng?: number;
+  adm1?: string;
+  adm2?: string;
 }
 
 export interface WeatherInfo {
