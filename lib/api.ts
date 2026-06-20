@@ -27,3 +27,63 @@ export async function planTrip(req: TripRequest): Promise<TripResponse> {
   }
   return res.json() as Promise<TripResponse>;
 }
+
+// 流式进度事件：Agent 推理完成、进入结构化整理阶段时由后端推送。
+export interface PlanProgress {
+  stage: string;
+  message: string;
+}
+
+// 流式规划：消费后端 /plan/stream 的 NDJSON 流。
+// 每行一个 JSON 事件：progress（进度提示）/ result（最终行程）/ error。
+// onProgress 在收到 progress 事件时回调，便于前端先展示「正在整理」等过渡态。
+export async function planTripStream(
+  req: TripRequest,
+  onProgress?: (p: PlanProgress) => void,
+): Promise<TripResponse> {
+  const res = await fetch(`${BASE_URL}/plan/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok || !res.body) {
+    const err = await res.json().catch(() => ({ detail: "请求失败" }));
+    throw new Error(err.detail ?? "规划失败，请稍后再试");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: TripResponse | null = null;
+
+  // 处理一行 JSON 事件：分发到进度 / 结果 / 错误
+  const handleLine = (line: string) => {
+    const text = line.trim();
+    if (!text) return;
+    const evt = JSON.parse(text);
+    if (evt.type === "progress") {
+      onProgress?.(evt as PlanProgress);
+    } else if (evt.type === "result") {
+      result = evt.data as TripResponse;
+    } else if (evt.type === "error") {
+      throw new Error(evt.detail ?? "规划失败，请稍后再试");
+    }
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
+      handleLine(line);
+    }
+  }
+  // 冲洗末尾可能残留的最后一行（无结尾换行时）
+  handleLine(buffer);
+
+  if (!result) throw new Error("未收到规划结果，请稍后再试");
+  return result;
+}

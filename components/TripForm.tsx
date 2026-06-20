@@ -11,7 +11,7 @@ import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import { PickerDay, type PickerDayProps } from "@mui/x-date-pickers/PickerDay";
-import { lookupCity, planTrip } from "@/lib/api";
+import { lookupCity, planTripStream } from "@/lib/api";
 import type { City, TripResponse } from "@/types/trip";
 import ItineraryView from "./ItineraryView";
 
@@ -98,6 +98,8 @@ export default function TripForm() {
     end: dayjs().add(2, "day"),
   });
   const [loading, setLoading] = useState(false);
+  // 流式进度提示：默认「AI规划中」，收到后端 progress 事件后切到「正在整理」
+  const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TripResponse | null>(null);
 
@@ -155,14 +157,19 @@ export default function TripForm() {
     const { start, end } = range;
     if (!resolved || !start || !end) return;
     setLoading(true);
+    setProgress(null);
     setError(null);
     setResult(null);
     try {
-      const data = await planTrip({
-        city: resolved.name,
-        start_date: start.format("YYYY-MM-DD"),
-        end_date: end.format("YYYY-MM-DD"),
-      });
+      const data = await planTripStream(
+        {
+          city: resolved.name,
+          start_date: start.format("YYYY-MM-DD"),
+          end_date: end.format("YYYY-MM-DD"),
+        },
+        // 收到「推理完成，正在整理」进度事件时更新提示文案
+        (p) => setProgress(p.message),
+      );
       setResult(data);
     } catch (err: unknown) {
       setError(
@@ -170,6 +177,7 @@ export default function TripForm() {
       );
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   }
 
@@ -320,9 +328,11 @@ export default function TripForm() {
       {loading && (
         <div className="flex flex-col items-center gap-3 py-10 text-gray-500">
           <div className="w-10 h-10 border-4 border-gray-200 border-t-brand-700 rounded-full animate-spin" />
-          <p className="text-sm">AI正在规划您的专属行程…</p>
+          <p className="text-sm">
+            {progress ?? "AI正在规划您的专属行程…"}
+          </p>
           <p className="text-xs text-gray-400">
-            查询天气 · 匹配路线 · 推荐美食
+            {progress ? "结构化整理中，马上完成" : "查询天气 · 匹配路线 · 推荐美食"}
           </p>
         </div>
       )}
