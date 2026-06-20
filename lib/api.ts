@@ -28,9 +28,13 @@ export async function planTrip(req: TripRequest): Promise<TripResponse> {
   return res.json() as Promise<TripResponse>;
 }
 
-// 流式进度事件：Agent 推理完成、进入结构化整理阶段时由后端推送。
+// 流式进度事件：Agent 每调用一个工具、以及进入结构化整理阶段时由后端推送。
+// stage：start（开始分析）/ tool（正在调用某工具）/ formatting（整理行程）。
+// step：后端 Graph 的步骤计数，仅用于展示「走到第几步」。
 export interface PlanProgress {
+  type: "progress";
   stage: string;
+  step?: number;
   message: string;
 }
 

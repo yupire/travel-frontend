@@ -11,7 +11,7 @@ import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import { PickerDay, type PickerDayProps } from "@mui/x-date-pickers/PickerDay";
-import { lookupCity, planTripStream } from "@/lib/api";
+import { lookupCity, planTripStream, type PlanProgress } from "@/lib/api";
 import type { City, TripResponse } from "@/types/trip";
 import ItineraryView from "./ItineraryView";
 
@@ -98,8 +98,9 @@ export default function TripForm() {
     end: dayjs().add(2, "day"),
   });
   const [loading, setLoading] = useState(false);
-  // 流式进度提示：默认「AI规划中」，收到后端 progress 事件后切到「正在整理」
-  const [progress, setProgress] = useState<string | null>(null);
+  // 流式进度列表：每收到一条后端 progress 事件就追加一项，按步骤展示「当前在做什么」。
+  // 最终行程（result）返回后清空，页面只展示行程内容。
+  const [steps, setSteps] = useState<PlanProgress[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TripResponse | null>(null);
 
@@ -157,7 +158,7 @@ export default function TripForm() {
     const { start, end } = range;
     if (!resolved || !start || !end) return;
     setLoading(true);
-    setProgress(null);
+    setSteps([]);
     setError(null);
     setResult(null);
     try {
@@ -167,9 +168,11 @@ export default function TripForm() {
           start_date: start.format("YYYY-MM-DD"),
           end_date: end.format("YYYY-MM-DD"),
         },
-        // 收到「推理完成，正在整理」进度事件时更新提示文案
-        (p) => setProgress(p.message),
+        // 每收到一条进度事件就追加到步骤列表，实时展示「走到第几步、做什么」
+        (p) => setSteps((prev) => [...prev, p]),
       );
+      // 收到最终行程：清空进度，只展示行程内容
+      setSteps([]);
       setResult(data);
     } catch (err: unknown) {
       setError(
@@ -177,7 +180,7 @@ export default function TripForm() {
       );
     } finally {
       setLoading(false);
-      setProgress(null);
+      setSteps([]);
     }
   }
 
@@ -324,16 +327,48 @@ export default function TripForm() {
         </DialogActions>
       </Dialog>
 
-      {/* Loading */}
+      {/* Loading —— 展示流式进度列表：已完成的步骤打勾，最新一步转圈进行中 */}
       {loading && (
-        <div className="flex flex-col items-center gap-3 py-10 text-gray-500">
-          <div className="w-10 h-10 border-4 border-gray-200 border-t-brand-700 rounded-full animate-spin" />
-          <p className="text-sm">
-            {progress ?? "AI正在规划您的专属行程…"}
-          </p>
-          <p className="text-xs text-gray-400">
-            {progress ? "结构化整理中，马上完成" : "查询天气 · 匹配路线 · 推荐美食"}
-          </p>
+        <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-5 h-5 border-2 border-gray-200 border-t-brand-700 rounded-full animate-spin" />
+            <p className="text-sm font-medium text-gray-700">
+              AI正在规划您的专属行程…
+            </p>
+          </div>
+
+          {steps.length === 0 ? (
+            <p className="text-xs text-gray-400">
+              查询天气 · 匹配路线 · 推荐美食
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {steps.map((s, i) => {
+                const isLast = i === steps.length - 1;
+                return (
+                  <li
+                    key={`${s.step ?? i}-${i}`}
+                    className="flex items-start gap-2 text-sm"
+                  >
+                    <span className="mt-0.5 shrink-0">
+                      {isLast ? (
+                        <span className="inline-block w-3.5 h-3.5 border-2 border-gray-200 border-t-brand-700 rounded-full animate-spin" />
+                      ) : (
+                        <span className="text-brand-700">✓</span>
+                      )}
+                    </span>
+                    <span
+                      className={
+                        isLast ? "text-gray-800" : "text-gray-400 line-through"
+                      }
+                    >
+                      {s.message}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       )}
 
