@@ -1,6 +1,11 @@
 import type { City, TripRequest, TripResponse } from "@/types/trip";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// 浏览器侧统一走同源的 /api 前缀，由 Next.js 的 rewrites 代理到 Python 后端，
+// 避免直接请求后端端口导致的跨域；服务端渲染时仍可用 PYTHON_SERVICE_URL 直连。
+const BASE_URL =
+  typeof window === "undefined"
+    ? `${process.env.PYTHON_SERVICE_URL ?? "http://localhost:8000"}`
+    : "/api";
 
 // 按名称查询单个城市 —— 输入值填充到 /cities/{location} 进行实时查询。
 export async function lookupCity(location: string): Promise<City> {
@@ -74,7 +79,7 @@ export async function planTripStream(
     }
   };
 
-  for (;;) {
+  for (; ;) {
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });

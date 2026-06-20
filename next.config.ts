@@ -7,7 +7,9 @@ const nextConfig: NextConfig = {
     useCache: true,
   },
   async rewrites() {
-    const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    const backendUrl =
+      process.env.PYTHON_SERVICE_URL ||
+      "http://localhost:8000";
     return [
       {
         source: "/api/:path*",
