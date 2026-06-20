@@ -2,13 +2,13 @@
 
 import { createTheme } from "@mui/material/styles";
 
-// Brand colors kept in sync with tailwind.config.js (brand.800 = #166534)
+// Brand colors kept in sync with tailwind.config.js (brand.800 = #4caf50)
 const theme = createTheme({
   palette: {
     primary: {
-      main: "#166534",
-      light: "#22c55e",
-      dark: "#14532d",
+      main: "#4caf50",
+      light: "#80e27e",
+      dark: "#388e3c",
       contrastText: "#ffffff",
     },
     background: {
@@ -60,7 +60,7 @@ const theme = createTheme({
           letterSpacing: "0.05em",
           textTransform: "uppercase",
           color: "#6b7280",
-          "&.Mui-focused": { color: "#166534" },
+          "&.Mui-focused": { color: "#4caf50" },
         },
       },
     },

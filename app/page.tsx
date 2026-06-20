@@ -1,19 +1,6 @@
-import { connection } from "next/server";
-import { getCities } from "@/lib/cities";
 import TripForm from "@/components/TripForm";
-import type { City } from "@/types/trip";
 
-// `connection()` opts this page into dynamic rendering (Next.js 16).
-// getCities itself is cached via `use cache` — shared across all requests.
-export default async function Page() {
-  await connection();
-  let cities: City[] = [];
-  try {
-    cities = await getCities();
-  } catch {
-    // Backend not running yet — form will show an error state
-  }
-
+export default function Page() {
   return (
     <main className="flex flex-col flex-1">
       {/* Header */}
@@ -26,7 +13,7 @@ export default async function Page() {
 
       {/* Body */}
       <div className="flex-1 px-4 py-5">
-        <TripForm cities={cities} />
+        <TripForm />
       </div>
     </main>
   );

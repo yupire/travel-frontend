@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import dayjs, { type Dayjs } from "dayjs";
 import TextField from "@mui/material/TextField";
-import MenuItem from "@mui/material/MenuItem";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -12,13 +11,9 @@ import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import { PickerDay, type PickerDayProps } from "@mui/x-date-pickers/PickerDay";
-import { planTrip } from "@/lib/api";
+import { lookupCity, planTrip } from "@/lib/api";
 import type { City, TripResponse } from "@/types/trip";
 import ItineraryView from "./ItineraryView";
-
-interface Props {
-  cities: City[];
-}
 
 type RangeDraft = { start: Dayjs | null; end: Dayjs | null };
 
@@ -61,7 +56,7 @@ function RangeDay({
         ...(inRange &&
           !isStart &&
           !isEnd && {
-            bgcolor: "rgba(22, 101, 52, 0.12) !important",
+            bgcolor: "rgba(76, 175, 80, 0.12) !important",
             color: "primary.main",
             borderRadius: 0,
           }),
@@ -91,8 +86,13 @@ function RangeDay({
 
 /* ── Main form ─────────────────────────────────────────────── */
 
-export default function TripForm({ cities }: Props) {
-  const [city, setCity] = useState(cities[0]?.id ?? "");
+export default function TripForm() {
+  // 目的地：用户输入的关键词 + 通过 /cities/{location} 实时解析的城市
+  const [query, setQuery] = useState("");
+  const [resolved, setResolved] = useState<City | null>(null);
+  const [cityLoading, setCityLoading] = useState(false);
+  const [cityError, setCityError] = useState<string | null>(null);
+
   const [range, setRange] = useState<RangeDraft>({
     start: dayjs(),
     end: dayjs().add(2, "day"),
@@ -104,6 +104,32 @@ export default function TripForm({ cities }: Props) {
   // Dialog + draft range
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<RangeDraft>(range);
+
+  // 输入目的地后防抖查询 /cities/{location}
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setResolved(null);
+      setCityError(null);
+      setCityLoading(false);
+      return;
+    }
+    setCityLoading(true);
+    setCityError(null);
+    const handle = setTimeout(async () => {
+      try {
+        const city = await lookupCity(q);
+        setResolved(city);
+        setCityError(null);
+      } catch (err: unknown) {
+        setResolved(null);
+        setCityError(err instanceof Error ? err.message : "未找到该城市");
+      } finally {
+        setCityLoading(false);
+      }
+    }, 450);
+    return () => clearTimeout(handle);
+  }, [query]);
 
   function openPicker() {
     setDraft(range);
@@ -122,36 +148,29 @@ export default function TripForm({ cities }: Props) {
     setDraft({ start: null, end: null });
   }
 
-  const cityLabel = cities.find((c) => c.id === city);
   const days = useMemo(() => dayCount(range.start, range.end), [range]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const { start, end } = range;
-    if (!city || !start || !end) return;
+    if (!resolved || !start || !end) return;
     setLoading(true);
     setError(null);
     setResult(null);
     try {
       const data = await planTrip({
-        city,
+        city: resolved.name,
         start_date: start.format("YYYY-MM-DD"),
         end_date: end.format("YYYY-MM-DD"),
       });
       setResult(data);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "规划失败，请检查后端服务是否启动");
+      setError(
+        err instanceof Error ? err.message : "规划失败，请检查后端服务是否启动",
+      );
     } finally {
       setLoading(false);
     }
-  }
-
-  if (cities.length === 0) {
-    return (
-      <div className="rounded-2xl bg-red-50 border border-red-200 p-4 text-sm text-red-700">
-        无法连接后端服务，请先启动 FastAPI（<code>uvicorn main:app --reload</code>）
-      </div>
-    );
   }
 
   const calendarValue = draft.start ?? dayjs();
@@ -159,11 +178,7 @@ export default function TripForm({ cities }: Props) {
   // Stable callback for RangeDay so React doesn't recreate component every render
   const renderDay = useCallback(
     (dayProps: PickerDayProps) => (
-      <RangeDay
-        {...dayProps}
-        rangeStart={draft.start}
-        rangeEnd={draft.end}
-      />
+      <RangeDay {...dayProps} rangeStart={draft.start} rangeEnd={draft.end} />
     ),
     [draft.start, draft.end],
   );
@@ -171,29 +186,39 @@ export default function TripForm({ cities }: Props) {
   return (
     <div className="space-y-4">
       {/* Form Card */}
-      <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-4">
-        {/* City select */}
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-4"
+      >
+        {/* Destination — free text, resolved via /cities/{location} */}
         <TextField
-          select
           fullWidth
           label="目的地"
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
           size="medium"
+          placeholder="输入城市名，如 北京"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          error={Boolean(cityError)}
+          helperText={
+            cityLoading
+              ? "查询中…"
+              : cityError
+                ? cityError
+                : resolved
+                  ? `已找到：${resolved.name} · ${resolved.country}`
+                  : "输入目的地后自动查询"
+          }
           slotProps={{
-            select: {
-              MenuProps: {
-                sx: { "& .MuiPaper-root": { borderRadius: 3, maxHeight: 360 } },
-              },
+            input: {
+              sx: { padding: "10px" },
+              endAdornment: (
+                <span className="text-gray-400 text-lg pl-2 select-none">
+                  {cityLoading ? "⏳" : "📍"}
+                </span>
+              ),
             },
           }}
-        >
-          {cities.map((c) => (
-            <MenuItem key={c.id} value={c.id}>
-              {c.name} · {c.country}
-            </MenuItem>
-          ))}
-        </TextField>
+        />
 
         {/* Date range — single field, click to open dialog */}
         <TextField
@@ -204,27 +229,25 @@ export default function TripForm({ cities }: Props) {
           onClick={openPicker}
           slotProps={{
             input: {
+              sx: { padding: "10px" },
               readOnly: true,
               endAdornment: (
-                <span className="text-gray-400 text-lg pl-2 select-none">📅</span>
+                <span className="text-gray-400 text-lg pl-2 select-none">
+                  📅
+                </span>
               ),
             },
           }}
-          helperText={
-            days > 0
-              ? `共 ${days} 天`
-              : "点击选择出发与返回日期"
-          }
-          sx={{ cursor: "pointer", "& .MuiOutlinedInput-root": { cursor: "pointer" } }}
+          helperText={days > 0 ? `共 ${days} 天` : "点击选择出发与返回日期"}
         />
 
         {/* Submit */}
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || !resolved}
           className="w-full bg-brand-800 text-white font-semibold rounded-xl py-3.5 text-base active:scale-[0.98] transition-transform disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {loading ? "AI规划中…" : `规划${cityLabel ? cityLabel.name : ""}行程`}
+          {loading ? "AI规划中…" : "开始规划"}
         </button>
       </form>
 
@@ -240,7 +263,11 @@ export default function TripForm({ cities }: Props) {
       >
         <DialogTitle sx={{ pb: 0.5, fontSize: "1rem" }}>
           选择出行日期
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: "block", mt: 0.25 }}
+          >
             {draft.start && draft.end
               ? `已选 ${draft.start.format("MM-DD")} 至 ${draft.end.format("MM-DD")}（${dayCount(draft.start, draft.end)}天）`
               : draft.start
@@ -294,7 +321,9 @@ export default function TripForm({ cities }: Props) {
         <div className="flex flex-col items-center gap-3 py-10 text-gray-500">
           <div className="w-10 h-10 border-4 border-gray-200 border-t-brand-700 rounded-full animate-spin" />
           <p className="text-sm">AI正在规划您的专属行程…</p>
-          <p className="text-xs text-gray-400">查询天气 · 匹配路线 · 推荐美食</p>
+          <p className="text-xs text-gray-400">
+            查询天气 · 匹配路线 · 推荐美食
+          </p>
         </div>
       )}
 
