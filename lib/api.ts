@@ -65,22 +65,42 @@ export async function planTripStream(
   let buffer = "";
   let result: TripResponse | null = null;
 
-  // 处理一行 JSON 事件：分发到进度 / 结果 / 错误
+  // 处理一行 JSON 事件：分发到进度 / 结果 / 错误。
+  // JSON.parse 用 try/catch 包住：心跳/半行/脏数据解析失败时跳过该行，绝不让一行坏数据
+  // 抛出未捕获异常、中断整条流。业务 error 事件仍会主动 throw，交由调用方展示。
   const handleLine = (line: string) => {
     const text = line.trim();
     if (!text) return;
-    const evt = JSON.parse(text);
-    if (evt.type === "progress") {
-      onProgress?.(evt as PlanProgress);
-    } else if (evt.type === "result") {
-      result = evt.data as TripResponse;
-    } else if (evt.type === "error") {
-      throw new Error(evt.detail ?? "规划失败，请稍后再试");
+    let evt: { type?: string; data?: unknown; detail?: string };
+    try {
+      evt = JSON.parse(text);
+    } catch {
+      return;
+    }
+    switch (evt.type) {
+      case "progress":
+        onProgress?.(evt as unknown as PlanProgress);
+        break;
+      case "result":
+        result = evt.data as TripResponse;
+        break;
+      case "error":
+        throw new Error(evt.detail ?? "规划失败，请稍后再试");
+      // heartbeat / 未知 type：仅用于保活，忽略即可
+      default:
+        break;
     }
   };
 
   for (; ;) {
-    const { done, value } = await reader.read();
+    let chunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      chunk = await reader.read();
+    } catch {
+      // 底层连接中断 / 读取失败：转成友好错误交给调用方，避免未捕获的网络异常
+      throw new Error("连接中断，请稍后重试");
+    }
+    const { done, value } = chunk;
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     let nl: number;
