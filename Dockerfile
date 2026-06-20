@@ -11,6 +11,10 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# rewrites() 在 next build 时求值并写入 routes-manifest，故后端地址必须在构建期就可见。
+# 通过 build arg 注入，docker-compose 默认传 http://backend:8000（容器网络内的后端服务名）。
+ARG PYTHON_SERVICE_URL=http://backend:8000
+ENV PYTHON_SERVICE_URL=$PYTHON_SERVICE_URL
 RUN npm run build
 
 # 第三阶段：生产运行时镜像
